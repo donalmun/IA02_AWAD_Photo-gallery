@@ -58,14 +58,31 @@ const PhotoCard = ({
   );
 };
 
-const LoadingIndicator = () => (
-  <div className="col-span-full flex justify-center py-16">
-    <div className="flex flex-col items-center">
-      <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"></div>
-      <p className="mt-4 text-gray-600 font-medium">Đang tải thêm ảnh...</p>
-      <p className="mt-1 text-sm text-gray-400">Vui lòng chờ trong giây lát</p>
+const SkeletonPhotoCard = () => (
+  <div className="overflow-hidden rounded-2xl bg-white shadow-lg">
+    <div className="aspect-[4/3] bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200 animate-pulse"></div>
+    <div className="p-6 space-y-3">
+      <div className="h-4 w-3/4 rounded bg-gray-200"></div>
+      <div className="h-3 w-1/2 rounded bg-gray-200"></div>
     </div>
   </div>
+);
+
+const LoadingIndicator = ({ count }: { count: number }) => (
+  <>
+    {Array.from({ length: count }).map((_, index) => (
+      <div
+        key={`skeleton-${index}`}
+        className="animate-fade-in-up"
+        style={{
+          animationDelay: `${index * 0.08}s`,
+          animationFillMode: 'both',
+        }}
+      >
+        <SkeletonPhotoCard />
+      </div>
+    ))}
+  </>
 );
 
 const ErrorDisplay = ({
@@ -234,6 +251,10 @@ const PhotoList = () => {
     return () => cancelAnimationFrame(frame);
   }, [photos.length, hasMore, loadingState, loadMore]);
 
+  const isLoading = loadingState === LoadingState.LOADING;
+  const isInitialLoad = isLoading && photos.length === 0;
+  const skeletonCount = isInitialLoad ? 6 : 3;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -265,7 +286,7 @@ const PhotoList = () => {
           ))}
 
           {/* Hiển thị trạng thái Loading */}
-          {loadingState === LoadingState.LOADING && <LoadingIndicator />}
+          {isLoading && <LoadingIndicator count={skeletonCount} />}
 
           {/* Hiển thị trạng thái Lỗi */}
           {loadingState === LoadingState.ERROR && error && (
