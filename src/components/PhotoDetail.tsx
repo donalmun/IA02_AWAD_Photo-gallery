@@ -36,12 +36,21 @@ const PhotoDetail = () => {
   const { photo, loadingState, error } = usePhotoDetail(id);
 
   const handleBackToGallery = useCallback(() => {
+    let historyIndex = 0;
+
     if (typeof window !== 'undefined') {
       if (!sessionStorage.getItem('photoListScrollPosition')) {
         sessionStorage.setItem('photoListScrollPosition', '0');
       }
       sessionStorage.setItem('photoListShouldRestore', 'true');
+      historyIndex = window.history.state?.idx ?? 0;
     }
+
+    if (historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+
     navigate('/photos', { state: { from: 'photo-detail' } });
   }, [navigate]);
 
