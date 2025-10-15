@@ -6,19 +6,6 @@ import { photoService } from '../services/photoService';
 import { formatAuthorName } from '../utils/helpers';
 import type { Photo } from '../types/photo';
 
-// Debounce utility
-const debounce = (func: Function, wait: number) => {
-  let timeout: ReturnType<typeof setTimeout>;
-  return function executedFunction(...args: any[]) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
 const PhotoCard = ({
   photo,
   onClick,
@@ -117,8 +104,8 @@ const InfiniteScrollTrigger = ({
         }
       },
       {
-        rootMargin: '500px',
-        threshold: 0.1,
+        rootMargin: '1200px 0px',
+        threshold: 0,
       }
     );
 
@@ -142,15 +129,25 @@ const PhotoList = () => {
     [navigate]
   );
 
-  // Debounced load more để tránh gọi quá nhiều lần
-  const debouncedLoadMore = useCallback(
-    debounce(() => {
-      if (hasMore && loadingState !== LoadingState.LOADING) {
+  // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
+  useEffect(() => {
+    if (loadingState === LoadingState.LOADING || !hasMore) {
+      return;
+    }
+
+    const checkContentHeight = () => {
+      const { scrollHeight, clientHeight } = document.documentElement;
+
+      if (scrollHeight - clientHeight < clientHeight * 0.75) {
         loadMore();
       }
-    }, 100),
-    [hasMore, loadingState, loadMore]
-  );
+    };
+
+    // Delay bằng requestAnimationFrame để chắc chắn layout đã cập nhật
+    const frame = requestAnimationFrame(checkContentHeight);
+
+    return () => cancelAnimationFrame(frame);
+  }, [photos.length, hasMore, loadingState, loadMore]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -192,7 +189,7 @@ const PhotoList = () => {
 
           {/* Infinite scroll trigger */}
           <InfiniteScrollTrigger
-            onLoadMore={debouncedLoadMore}
+            onLoadMore={loadMore}
             hasMore={hasMore}
             loading={loadingState === LoadingState.LOADING}
           />
