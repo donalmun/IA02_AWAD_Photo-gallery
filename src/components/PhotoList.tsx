@@ -260,7 +260,7 @@ const PhotoList = () => {
 
   // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
   useEffect(() => {
-    if (loadingState === LoadingState.LOADING || !hasMore) {
+    if (loadingState !== LoadingState.SUCCESS || !hasMore) {
       return;
     }
 

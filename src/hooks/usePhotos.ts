@@ -116,6 +116,7 @@ export const usePhotos = () => {
   const prefetchPromiseRef = useRef<Promise<void> | null>(null);
   const prefetchTargetRef = useRef<number | null>(null);
   const prefetchGenerationRef = useRef(0);
+  const isFetchingRef = useRef(false);
 
   const clearPrefetch = useCallback(() => {
     prefetchGenerationRef.current += 1;
@@ -182,6 +183,7 @@ export const usePhotos = () => {
   // ---LOGIC---
   const loadPhotos = useCallback(
     async (page: number, limit: number = 20) => {
+      isFetchingRef.current = true;
       setLoadingState(LoadingState.LOADING);
       setError(null);
 
@@ -197,19 +199,22 @@ export const usePhotos = () => {
           err instanceof Error ? err.message : 'An unknown error occurred'
         );
         setLoadingState(LoadingState.ERROR);
+      } finally {
+        isFetchingRef.current = false;
       }
     },
     [appendPhotos, clearPrefetch, prefetchPage]
   );
 
   const loadMore = useCallback(() => {
-    if (!hasMore || loadingState === LoadingState.LOADING) {
+    if (!hasMore || isFetchingRef.current) {
       return;
     }
 
     const nextPage = currentPage + 1;
 
     const execute = async () => {
+      isFetchingRef.current = true;
       if (
         prefetchPromiseRef.current &&
         prefetchTargetRef.current === nextPage
@@ -227,10 +232,12 @@ export const usePhotos = () => {
         appendPhotos(nextPage, prefetchedPhotosRef.current);
         clearPrefetch();
         prefetchPage(nextPage + 1, 20);
+        isFetchingRef.current = false;
         return;
       }
 
       await loadPhotos(nextPage, 20); // Load 20 ảnh mỗi lần
+      isFetchingRef.current = false;
     };
 
     void execute();
@@ -240,7 +247,6 @@ export const usePhotos = () => {
     currentPage,
     hasMore,
     loadPhotos,
-    loadingState,
     prefetchPage,
     prefetchedPage,
   ]);
