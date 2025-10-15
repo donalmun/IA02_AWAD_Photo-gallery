@@ -1,6 +1,12 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import {
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from 'react';
 import { usePhotos } from '../hooks/usePhotos';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
 import { formatAuthorName } from '../utils/helpers';
@@ -118,16 +124,95 @@ const InfiniteScrollTrigger = ({
 
 const PhotoList = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { photos, loadingState, error, hasMore, loadMore, refresh } =
     usePhotos();
+  const pendingScrollRestoreRef = useRef<number | null>(null);
+  const hasScheduledRestoreRef = useRef(false);
 
   // Lưu scroll position khi navigate đến detail
   const handlePhotoClick = useCallback(
     (id: string) => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          'photoListScrollPosition',
+          String(window.scrollY)
+        );
+        sessionStorage.setItem('photoListShouldRestore', 'true');
+      }
       navigate(`/photo/${id}`);
     },
     [navigate]
   );
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const cameFromDetail = location.state?.from === 'photo-detail';
+    const shouldRestore =
+      sessionStorage.getItem('photoListShouldRestore') === 'true';
+
+    if (!cameFromDetail && !shouldRestore) {
+      return;
+    }
+
+    const savedPositionRaw = sessionStorage.getItem(
+      'photoListScrollPosition'
+    );
+    const savedPosition = Number(savedPositionRaw ?? '0');
+
+    pendingScrollRestoreRef.current = Number.isFinite(savedPosition)
+      ? savedPosition
+      : 0;
+    hasScheduledRestoreRef.current = true;
+
+    if (cameFromDetail) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!hasScheduledRestoreRef.current) {
+      return;
+    }
+
+    if (loadingState === LoadingState.ERROR) {
+      hasScheduledRestoreRef.current = false;
+      pendingScrollRestoreRef.current = null;
+      sessionStorage.removeItem('photoListScrollPosition');
+      sessionStorage.removeItem('photoListShouldRestore');
+      return;
+    }
+
+    if (loadingState !== LoadingState.SUCCESS) {
+      return;
+    }
+
+    const targetPosition = pendingScrollRestoreRef.current;
+
+    if (targetPosition === null) {
+      hasScheduledRestoreRef.current = false;
+      return;
+    }
+
+    const { scrollHeight } = document.documentElement;
+    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
+    const finalPosition = Math.min(targetPosition, maxScrollTop);
+
+    window.scrollTo({ top: finalPosition, behavior: 'auto' });
+
+    pendingScrollRestoreRef.current = null;
+    hasScheduledRestoreRef.current = false;
+
+    sessionStorage.removeItem('photoListScrollPosition');
+    sessionStorage.removeItem('photoListShouldRestore');
+  }, [loadingState, photos.length]);
 
   // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
   useEffect(() => {

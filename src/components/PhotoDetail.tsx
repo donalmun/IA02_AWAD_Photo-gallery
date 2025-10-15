@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePhotoDetail } from '../hooks/usePhotoDetail';
 import { LoadingState } from '../types/photo';
@@ -34,6 +35,16 @@ const PhotoDetail = () => {
   const navigate = useNavigate();
   const { photo, loadingState, error } = usePhotoDetail(id);
 
+  const handleBackToGallery = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      if (!sessionStorage.getItem('photoListScrollPosition')) {
+        sessionStorage.setItem('photoListScrollPosition', '0');
+      }
+      sessionStorage.setItem('photoListShouldRestore', 'true');
+    }
+    navigate('/photos', { state: { from: 'photo-detail' } });
+  }, [navigate]);
+
   if (
     loadingState === LoadingState.LOADING ||
     loadingState === LoadingState.IDLE
@@ -45,7 +56,7 @@ const PhotoDetail = () => {
     return (
       <FullPageError
         message={error || 'Không tìm thấy ảnh này.'}
-        onBack={() => navigate('/photos', { state: { from: 'photo-detail' } })}
+        onBack={handleBackToGallery}
       />
     );
   }
@@ -54,9 +65,7 @@ const PhotoDetail = () => {
       <div className="max-w-7xl mx-auto px-4">
         {/* Nút quay lại với design cải thiện */}
         <button
-          onClick={() =>
-            navigate('/photos', { state: { from: 'photo-detail' } })
-          }
+          onClick={handleBackToGallery}
           className="mb-8 flex items-center rounded-xl bg-white px-6 py-3 text-gray-700 shadow-sm border border-gray-200 transition-all duration-200 hover:shadow-md hover:bg-gray-50 hover:scale-105"
         >
           <svg
