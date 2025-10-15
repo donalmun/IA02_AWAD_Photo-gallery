@@ -145,7 +145,7 @@ const PhotoList = () => {
     [navigate]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }

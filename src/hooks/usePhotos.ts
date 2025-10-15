@@ -13,21 +13,70 @@ type PersistedPhotoState = {
   timestamp: number;
 };
 
+const readPersistedState = (): PersistedPhotoState | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (sessionStorage.getItem(RESTORE_FLAG_KEY) !== 'true') {
+    return null;
+  }
+
+  const storedStateRaw = sessionStorage.getItem(PHOTO_LIST_STATE_KEY);
+
+  if (!storedStateRaw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(storedStateRaw) as PersistedPhotoState;
+
+    if (
+      !Array.isArray(parsed.photos) ||
+      typeof parsed.currentPage !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      photos: parsed.photos,
+      currentPage: parsed.currentPage,
+      hasMore: typeof parsed.hasMore === 'boolean' ? parsed.hasMore : true,
+      timestamp: parsed.timestamp ?? Date.now(),
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const usePhotos = () => {
   // ---STATE MANAGEMENT---
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [loadingState, setLoadingState] = useState<LoadingState>(
-    LoadingState.IDLE
+  const persistedStateRef = useRef<PersistedPhotoState | null | undefined>(
+    undefined
+  );
+
+  if (persistedStateRef.current === undefined) {
+    persistedStateRef.current = readPersistedState();
+  }
+
+  const persistedState = persistedStateRef.current ?? null;
+
+  const [photos, setPhotos] = useState<Photo[]>(
+    () => persistedState?.photos ?? []
+  );
+  const [loadingState, setLoadingState] = useState<LoadingState>(() =>
+    persistedState ? LoadingState.SUCCESS : LoadingState.IDLE
   );
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(
+    () => persistedState?.currentPage ?? 1
+  );
+  const [hasMore, setHasMore] = useState(() => persistedState?.hasMore ?? true);
   const [prefetchedPage, setPrefetchedPage] = useState<number | null>(null);
   const prefetchedPhotosRef = useRef<Photo[] | null>(null);
   const prefetchPromiseRef = useRef<Promise<void> | null>(null);
   const prefetchTargetRef = useRef<number | null>(null);
   const prefetchGenerationRef = useRef(0);
-  const isHydratedRef = useRef(false);
 
   const clearPrefetch = useCallback(() => {
     prefetchGenerationRef.current += 1;
@@ -161,6 +210,7 @@ export const usePhotos = () => {
     setPhotos([]);
     setCurrentPage(1);
     setHasMore(true);
+    persistedStateRef.current = null;
     clearPrefetch();
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(PHOTO_LIST_STATE_KEY);
@@ -172,45 +222,13 @@ export const usePhotos = () => {
 
   // ---EFFECTS---
   useEffect(() => {
-    if (isHydratedRef.current) {
-      return;
-    }
+    const snapshot = persistedStateRef.current;
 
-    isHydratedRef.current = true;
-
-    if (typeof window === 'undefined') {
-      loadPhotos(1, 20);
-      return;
-    }
-
-    const shouldRestore = sessionStorage.getItem(RESTORE_FLAG_KEY) === 'true';
-    const storedStateRaw = sessionStorage.getItem(PHOTO_LIST_STATE_KEY);
-
-    if (shouldRestore && storedStateRaw) {
-      try {
-        const persisted = JSON.parse(storedStateRaw) as PersistedPhotoState;
-
-        if (
-          Array.isArray(persisted.photos) &&
-          typeof persisted.currentPage === 'number'
-        ) {
-          setPhotos(persisted.photos);
-          setCurrentPage(persisted.currentPage);
-          setHasMore(
-            typeof persisted.hasMore === 'boolean' ? persisted.hasMore : true
-          );
-          setError(null);
-          setLoadingState(LoadingState.SUCCESS);
-
-          if (persisted.hasMore !== false && persisted.photos.length > 0) {
-            prefetchPage(persisted.currentPage + 1, 20);
-          }
-
-          return;
-        }
-      } catch {
-        // Bỏ qua lỗi parse và tải dữ liệu mới
+    if (snapshot) {
+      if (snapshot.hasMore !== false && snapshot.photos.length > 0) {
+        prefetchPage(snapshot.currentPage + 1, 20);
       }
+      return;
     }
 
     loadPhotos(1, 20);
