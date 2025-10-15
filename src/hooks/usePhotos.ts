@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Photo } from '../types/photo';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
-import { APT_CONFIG } from '../constants/api';
 
 export const usePhotos = () => {
   // ---STATE MANAGEMENT---
