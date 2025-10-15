@@ -3,6 +3,16 @@ import type { Photo } from '../types/photo';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
 
+const PHOTO_LIST_STATE_KEY = 'photoListState';
+const RESTORE_FLAG_KEY = 'photoListShouldRestore';
+
+type PersistedPhotoState = {
+  photos: Photo[];
+  currentPage: number;
+  hasMore: boolean;
+  timestamp: number;
+};
+
 export const usePhotos = () => {
   // ---STATE MANAGEMENT---
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -17,6 +27,7 @@ export const usePhotos = () => {
   const prefetchPromiseRef = useRef<Promise<void> | null>(null);
   const prefetchTargetRef = useRef<number | null>(null);
   const prefetchGenerationRef = useRef(0);
+  const isHydratedRef = useRef(false);
 
   const clearPrefetch = useCallback(() => {
     prefetchGenerationRef.current += 1;
@@ -65,14 +76,13 @@ export const usePhotos = () => {
 
           prefetchedPhotosRef.current = upcomingPhotos;
           setPrefetchedPage(page);
-        } catch (err) {
+        } catch {
           clearPrefetch();
         } finally {
-          if (prefetchGenerationRef.current !== generation) {
-            return;
+          if (prefetchGenerationRef.current === generation) {
+            prefetchPromiseRef.current = null;
+            prefetchTargetRef.current = null;
           }
-          prefetchPromiseRef.current = null;
-          prefetchTargetRef.current = null;
         }
       })();
 
@@ -120,7 +130,7 @@ export const usePhotos = () => {
         setError(null);
         try {
           await prefetchPromiseRef.current;
-        } catch (err) {
+        } catch {
           // The prefetch promise swallows its own errors, so we ignore here
         }
       }
@@ -152,13 +162,59 @@ export const usePhotos = () => {
     setCurrentPage(1);
     setHasMore(true);
     clearPrefetch();
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(PHOTO_LIST_STATE_KEY);
+      sessionStorage.removeItem(RESTORE_FLAG_KEY);
+      sessionStorage.removeItem('photoListScrollPosition');
+    }
     loadPhotos(1, 20);
   }, [clearPrefetch, loadPhotos]);
 
   // ---EFFECTS---
   useEffect(() => {
+    if (isHydratedRef.current) {
+      return;
+    }
+
+    isHydratedRef.current = true;
+
+    if (typeof window === 'undefined') {
+      loadPhotos(1, 20);
+      return;
+    }
+
+    const shouldRestore = sessionStorage.getItem(RESTORE_FLAG_KEY) === 'true';
+    const storedStateRaw = sessionStorage.getItem(PHOTO_LIST_STATE_KEY);
+
+    if (shouldRestore && storedStateRaw) {
+      try {
+        const persisted = JSON.parse(storedStateRaw) as PersistedPhotoState;
+
+        if (
+          Array.isArray(persisted.photos) &&
+          typeof persisted.currentPage === 'number'
+        ) {
+          setPhotos(persisted.photos);
+          setCurrentPage(persisted.currentPage);
+          setHasMore(
+            typeof persisted.hasMore === 'boolean' ? persisted.hasMore : true
+          );
+          setError(null);
+          setLoadingState(LoadingState.SUCCESS);
+
+          if (persisted.hasMore !== false && persisted.photos.length > 0) {
+            prefetchPage(persisted.currentPage + 1, 20);
+          }
+
+          return;
+        }
+      } catch {
+        // Bỏ qua lỗi parse và tải dữ liệu mới
+      }
+    }
+
     loadPhotos(1, 20);
-  }, []);
+  }, [loadPhotos, prefetchPage]);
 
   useEffect(() => {
     if (!hasMore || loadingState !== LoadingState.SUCCESS) {
@@ -186,6 +242,28 @@ export const usePhotos = () => {
     prefetchPage,
     prefetchedPage,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (loadingState !== LoadingState.SUCCESS) {
+      return;
+    }
+
+    const stateToPersist: PersistedPhotoState = {
+      photos,
+      currentPage,
+      hasMore,
+      timestamp: Date.now(),
+    };
+
+    sessionStorage.setItem(
+      PHOTO_LIST_STATE_KEY,
+      JSON.stringify(stateToPersist)
+    );
+  }, [photos, currentPage, hasMore, loadingState]);
 
   return {
     photos,

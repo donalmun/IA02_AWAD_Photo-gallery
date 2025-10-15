@@ -1,6 +1,12 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import {
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from 'react';
 import { usePhotos } from '../hooks/usePhotos';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
 import { formatAuthorName } from '../utils/helpers';
@@ -118,16 +124,53 @@ const InfiniteScrollTrigger = ({
 
 const PhotoList = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { photos, loadingState, error, hasMore, loadMore, refresh } =
     usePhotos();
 
   // Lưu scroll position khi navigate đến detail
   const handlePhotoClick = useCallback(
     (id: string) => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          'photoListScrollPosition',
+          String(window.scrollY)
+        );
+        sessionStorage.setItem('photoListShouldRestore', 'true');
+      }
       navigate(`/photo/${id}`);
     },
     [navigate]
   );
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const cameFromDetail = location.state?.from === 'photo-detail';
+    const shouldRestore =
+      sessionStorage.getItem('photoListShouldRestore') === 'true';
+
+    if (!cameFromDetail && !shouldRestore) {
+      return;
+    }
+
+    const savedPosition = Number(
+      sessionStorage.getItem('photoListScrollPosition') ?? '0'
+    );
+
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: savedPosition, behavior: 'auto' });
+    });
+
+    sessionStorage.removeItem('photoListScrollPosition');
+    sessionStorage.removeItem('photoListShouldRestore');
+
+    if (cameFromDetail) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
 
   // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
   useEffect(() => {
