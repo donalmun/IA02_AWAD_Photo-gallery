@@ -141,9 +141,11 @@ const InfiniteScrollTrigger = ({
   loading: boolean;
 }) => {
   const triggerRef = useRef<HTMLDivElement>(null);
-  const pendingLoadRef = useRef(false);
   const latestHasMoreRef = useRef(hasMore);
   const latestLoadingRef = useRef(loading);
+  const isIntersectingRef = useRef(false);
+  const pendingLoadRef = useRef(false);
+  const hasRequestedRef = useRef(false);
 
   useEffect(() => {
     latestHasMoreRef.current = hasMore;
@@ -163,21 +165,26 @@ const InfiniteScrollTrigger = ({
         if (!entry) return;
 
         if (entry.isIntersecting) {
-          pendingLoadRef.current = true;
+          isIntersectingRef.current = true;
 
           if (
             latestHasMoreRef.current &&
             !latestLoadingRef.current
           ) {
+            hasRequestedRef.current = true;
             pendingLoadRef.current = false;
             onLoadMore();
+          } else if (latestHasMoreRef.current) {
+            pendingLoadRef.current = true;
           }
         } else {
+          isIntersectingRef.current = false;
           pendingLoadRef.current = false;
+          hasRequestedRef.current = false;
         }
       },
       {
-        rootMargin: '1200px 0px',
+        rootMargin: '480px 0px',
         threshold: 0,
       }
     );
@@ -187,10 +194,19 @@ const InfiniteScrollTrigger = ({
   }, [onLoadMore]);
 
   useEffect(() => {
-    if (!loading && hasMore && pendingLoadRef.current) {
-      pendingLoadRef.current = false;
-      onLoadMore();
+    if (
+      loading ||
+      !hasMore ||
+      !isIntersectingRef.current ||
+      !pendingLoadRef.current ||
+      hasRequestedRef.current
+    ) {
+      return;
     }
+
+    pendingLoadRef.current = false;
+    hasRequestedRef.current = true;
+    onLoadMore();
   }, [hasMore, loading, onLoadMore]);
 
   return <div ref={triggerRef} className="h-4" />;
