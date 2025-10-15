@@ -3,15 +3,75 @@ import type { Photo } from '../types/photo';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
 
+const PHOTO_LIST_STATE_KEY = 'photoListState';
+const RESTORE_FLAG_KEY = 'photoListShouldRestore';
+
+type PersistedPhotoState = {
+  photos: Photo[];
+  currentPage: number;
+  hasMore: boolean;
+  timestamp: number;
+};
+
+const readPersistedState = (): PersistedPhotoState | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (sessionStorage.getItem(RESTORE_FLAG_KEY) !== 'true') {
+    return null;
+  }
+
+  const storedStateRaw = sessionStorage.getItem(PHOTO_LIST_STATE_KEY);
+
+  if (!storedStateRaw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(storedStateRaw) as PersistedPhotoState;
+
+    if (
+      !Array.isArray(parsed.photos) ||
+      typeof parsed.currentPage !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      photos: parsed.photos,
+      currentPage: parsed.currentPage,
+      hasMore: typeof parsed.hasMore === 'boolean' ? parsed.hasMore : true,
+      timestamp: parsed.timestamp ?? Date.now(),
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const usePhotos = () => {
   // ---STATE MANAGEMENT---
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [loadingState, setLoadingState] = useState<LoadingState>(
-    LoadingState.IDLE
+  const persistedStateRef = useRef<PersistedPhotoState | null | undefined>(
+    undefined
+  );
+
+  if (persistedStateRef.current === undefined) {
+    persistedStateRef.current = readPersistedState();
+  }
+
+  const persistedState = persistedStateRef.current ?? null;
+
+  const [photos, setPhotos] = useState<Photo[]>(
+    () => persistedState?.photos ?? []
+  );
+  const [loadingState, setLoadingState] = useState<LoadingState>(() =>
+    persistedState ? LoadingState.SUCCESS : LoadingState.IDLE
   );
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(
+    () => persistedState?.currentPage ?? 1
+  );
+  const [hasMore, setHasMore] = useState(() => persistedState?.hasMore ?? true);
   const [prefetchedPage, setPrefetchedPage] = useState<number | null>(null);
   const prefetchedPhotosRef = useRef<Photo[] | null>(null);
   const prefetchPromiseRef = useRef<Promise<void> | null>(null);
@@ -65,14 +125,13 @@ export const usePhotos = () => {
 
           prefetchedPhotosRef.current = upcomingPhotos;
           setPrefetchedPage(page);
-        } catch (err) {
+        } catch {
           clearPrefetch();
         } finally {
-          if (prefetchGenerationRef.current !== generation) {
-            return;
+          if (prefetchGenerationRef.current === generation) {
+            prefetchPromiseRef.current = null;
+            prefetchTargetRef.current = null;
           }
-          prefetchPromiseRef.current = null;
-          prefetchTargetRef.current = null;
         }
       })();
 
@@ -120,7 +179,7 @@ export const usePhotos = () => {
         setError(null);
         try {
           await prefetchPromiseRef.current;
-        } catch (err) {
+        } catch {
           // The prefetch promise swallows its own errors, so we ignore here
         }
       }
@@ -151,14 +210,29 @@ export const usePhotos = () => {
     setPhotos([]);
     setCurrentPage(1);
     setHasMore(true);
+    persistedStateRef.current = null;
     clearPrefetch();
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(PHOTO_LIST_STATE_KEY);
+      sessionStorage.removeItem(RESTORE_FLAG_KEY);
+      sessionStorage.removeItem('photoListScrollPosition');
+    }
     loadPhotos(1, 20);
   }, [clearPrefetch, loadPhotos]);
 
   // ---EFFECTS---
   useEffect(() => {
+    const snapshot = persistedStateRef.current;
+
+    if (snapshot) {
+      if (snapshot.hasMore !== false && snapshot.photos.length > 0) {
+        prefetchPage(snapshot.currentPage + 1, 20);
+      }
+      return;
+    }
+
     loadPhotos(1, 20);
-  }, []);
+  }, [loadPhotos, prefetchPage]);
 
   useEffect(() => {
     if (!hasMore || loadingState !== LoadingState.SUCCESS) {
@@ -186,6 +260,28 @@ export const usePhotos = () => {
     prefetchPage,
     prefetchedPage,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (loadingState !== LoadingState.SUCCESS) {
+      return;
+    }
+
+    const stateToPersist: PersistedPhotoState = {
+      photos,
+      currentPage,
+      hasMore,
+      timestamp: Date.now(),
+    };
+
+    sessionStorage.setItem(
+      PHOTO_LIST_STATE_KEY,
+      JSON.stringify(stateToPersist)
+    );
+  }, [photos, currentPage, hasMore, loadingState]);
 
   return {
     photos,
