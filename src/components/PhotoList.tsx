@@ -3,10 +3,9 @@ import {
   useCallback,
   useRef,
   useState,
-  useLayoutEffect,
 } from 'react';
 import { usePhotos } from '../hooks/usePhotos';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { LoadingState } from '../types/photo';
 import { photoService } from '../services/photoService';
 import { formatAuthorName } from '../utils/helpers';
@@ -163,124 +162,25 @@ const InfiniteScrollTrigger = ({
     return () => observer.disconnect();
   }, [onLoadMore, hasMore, loading]);
 
+
   return <div ref={triggerRef} className="h-4" />;
 };
 
 const PhotoList = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { photos, loadingState, error, hasMore, loadMore, refresh } =
     usePhotos();
-  const pendingScrollRestoreRef = useRef<number | null>(null);
-  const hasScheduledRestoreRef = useRef(false);
 
-  // Lưu scroll position khi navigate đến detail
   const handlePhotoClick = useCallback(
     (id: string) => {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(
-          'photoListScrollPosition',
-          String(window.scrollY)
-        );
-        sessionStorage.setItem('photoListShouldRestore', 'true');
-      }
       navigate(`/photo/${id}`);
     },
     [navigate]
   );
 
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const cameFromDetail = location.state?.from === 'photo-detail';
-    const shouldRestore =
-      sessionStorage.getItem('photoListShouldRestore') === 'true';
-
-    if (!cameFromDetail && !shouldRestore) {
-      return;
-    }
-
-    const savedPositionRaw = sessionStorage.getItem(
-      'photoListScrollPosition'
-    );
-    const savedPosition = Number(savedPositionRaw ?? '0');
-
-    pendingScrollRestoreRef.current = Number.isFinite(savedPosition)
-      ? savedPosition
-      : 0;
-    hasScheduledRestoreRef.current = true;
-
-    if (cameFromDetail) {
-      navigate(location.pathname, { replace: true, state: null });
-    }
-  }, [location, navigate]);
-
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    if (!hasScheduledRestoreRef.current) {
-      return;
-    }
-
-    if (loadingState === LoadingState.ERROR) {
-      hasScheduledRestoreRef.current = false;
-      pendingScrollRestoreRef.current = null;
-      sessionStorage.removeItem('photoListScrollPosition');
-      sessionStorage.removeItem('photoListShouldRestore');
-      return;
-    }
-
-    if (loadingState !== LoadingState.SUCCESS) {
-      return;
-    }
-
-    const targetPosition = pendingScrollRestoreRef.current;
-
-    if (targetPosition === null) {
-      hasScheduledRestoreRef.current = false;
-      return;
-    }
-
-    const { scrollHeight } = document.documentElement;
-    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
-    const finalPosition = Math.min(targetPosition, maxScrollTop);
-
-    window.scrollTo({ top: finalPosition, behavior: 'auto' });
-
-    pendingScrollRestoreRef.current = null;
-    hasScheduledRestoreRef.current = false;
-
-    sessionStorage.removeItem('photoListScrollPosition');
-    sessionStorage.removeItem('photoListShouldRestore');
-  }, [loadingState, photos.length]);
-
-  // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
-  useEffect(() => {
-    if (loadingState === LoadingState.LOADING || !hasMore) {
-      return;
-    }
-
-    const checkContentHeight = () => {
-      const { scrollHeight, clientHeight } = document.documentElement;
-
-      if (scrollHeight - clientHeight < clientHeight * 0.75) {
-        loadMore();
-      }
-    };
-
-    // Delay bằng requestAnimationFrame để chắc chắn layout đã cập nhật
-    const frame = requestAnimationFrame(checkContentHeight);
-
-    return () => cancelAnimationFrame(frame);
-  }, [photos.length, hasMore, loadingState, loadMore]);
-
   const isLoading = loadingState === LoadingState.LOADING;
   const isInitialLoad = isLoading && photos.length === 0;
-  const skeletonCount = isInitialLoad ? 6 : 3;
+  const skeletonCount = 6;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -299,21 +199,21 @@ const PhotoList = () => {
         {/* Grid layout với ít cột hơn để card lớn hơn */}
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
           {/* Hiển thị danh sách ảnh với animation */}
-          {photos.map((photo, index) => (
+          {photos.map((photo) => (
             <div
               key={photo.id}
-              className="animate-fade-in-up"
+              className=""
               style={{
-                animationDelay: `${index * 0.1}s`,
-                animationFillMode: 'both',
+                animationDelay: undefined,
+                animationFillMode: undefined,
               }}
             >
               <PhotoCard photo={photo} onClick={handlePhotoClick} />
             </div>
           ))}
 
-          {/* Hiển thị trạng thái Loading */}
-          {isLoading && <LoadingIndicator count={skeletonCount} />}
+          {/* Chỉ hiển thị skeleton cho lần tải đầu để tránh nhấp nháy */}
+          {isInitialLoad && <LoadingIndicator count={skeletonCount} />}
 
           {/* Hiển thị trạng thái Lỗi */}
           {loadingState === LoadingState.ERROR && error && (
