@@ -127,6 +127,8 @@ const PhotoList = () => {
   const location = useLocation();
   const { photos, loadingState, error, hasMore, loadMore, refresh } =
     usePhotos();
+  const pendingScrollRestoreRef = useRef<number | null>(null);
+  const hasScheduledRestoreRef = useRef(false);
 
   // Lưu scroll position khi navigate đến detail
   const handlePhotoClick = useCallback(
@@ -143,7 +145,7 @@ const PhotoList = () => {
     [navigate]
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -156,21 +158,61 @@ const PhotoList = () => {
       return;
     }
 
-    const savedPosition = Number(
-      sessionStorage.getItem('photoListScrollPosition') ?? '0'
+    const savedPositionRaw = sessionStorage.getItem(
+      'photoListScrollPosition'
     );
+    const savedPosition = Number(savedPositionRaw ?? '0');
 
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: savedPosition, behavior: 'auto' });
-    });
-
-    sessionStorage.removeItem('photoListScrollPosition');
-    sessionStorage.removeItem('photoListShouldRestore');
+    pendingScrollRestoreRef.current = Number.isFinite(savedPosition)
+      ? savedPosition
+      : 0;
+    hasScheduledRestoreRef.current = true;
 
     if (cameFromDetail) {
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location, navigate]);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!hasScheduledRestoreRef.current) {
+      return;
+    }
+
+    if (loadingState === LoadingState.ERROR) {
+      hasScheduledRestoreRef.current = false;
+      pendingScrollRestoreRef.current = null;
+      sessionStorage.removeItem('photoListScrollPosition');
+      sessionStorage.removeItem('photoListShouldRestore');
+      return;
+    }
+
+    if (loadingState !== LoadingState.SUCCESS) {
+      return;
+    }
+
+    const targetPosition = pendingScrollRestoreRef.current;
+
+    if (targetPosition === null) {
+      hasScheduledRestoreRef.current = false;
+      return;
+    }
+
+    const { scrollHeight } = document.documentElement;
+    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
+    const finalPosition = Math.min(targetPosition, maxScrollTop);
+
+    window.scrollTo({ top: finalPosition, behavior: 'auto' });
+
+    pendingScrollRestoreRef.current = null;
+    hasScheduledRestoreRef.current = false;
+
+    sessionStorage.removeItem('photoListScrollPosition');
+    sessionStorage.removeItem('photoListShouldRestore');
+  }, [loadingState, photos.length]);
 
   // Tự động nạp thêm khi nội dung chưa đủ để scroll giúp giảm thời gian chờ
   useEffect(() => {
