@@ -5,6 +5,38 @@ import { photoService } from '../services/photoService';
 
 const PHOTO_LIST_STATE_KEY = 'photoListState';
 const RESTORE_FLAG_KEY = 'photoListShouldRestore';
+const MEMORY_CACHE_TTL = 1000 * 60 * 5; // 5 minutes
+
+let memoryCache: PersistedPhotoState | null = null;
+
+const isStateFresh = (state: PersistedPhotoState | null): state is PersistedPhotoState => {
+  if (!state) {
+    return false;
+  }
+
+  if (Date.now() - state.timestamp > MEMORY_CACHE_TTL) {
+    return false;
+  }
+
+  return true;
+};
+
+const readMemoryState = () => {
+  if (!isStateFresh(memoryCache)) {
+    memoryCache = null;
+    return null;
+  }
+
+  return memoryCache;
+};
+
+const writeMemoryState = (state: PersistedPhotoState) => {
+  memoryCache = state;
+};
+
+const clearMemoryState = () => {
+  memoryCache = null;
+};
 
 type PersistedPhotoState = {
   photos: Photo[];
@@ -38,12 +70,19 @@ const readPersistedState = (): PersistedPhotoState | null => {
       return null;
     }
 
-    return {
+    const parsedState: PersistedPhotoState = {
       photos: parsed.photos,
       currentPage: parsed.currentPage,
       hasMore: typeof parsed.hasMore === 'boolean' ? parsed.hasMore : true,
       timestamp: parsed.timestamp ?? Date.now(),
     };
+
+    if (!isStateFresh(parsedState)) {
+      sessionStorage.removeItem(PHOTO_LIST_STATE_KEY);
+      return null;
+    }
+
+    return parsedState;
   } catch {
     return null;
   }
@@ -56,7 +95,7 @@ export const usePhotos = () => {
   );
 
   if (persistedStateRef.current === undefined) {
-    persistedStateRef.current = readPersistedState();
+    persistedStateRef.current = readMemoryState() ?? readPersistedState();
   }
 
   const persistedState = persistedStateRef.current ?? null;
@@ -212,6 +251,7 @@ export const usePhotos = () => {
     setHasMore(true);
     persistedStateRef.current = null;
     clearPrefetch();
+    clearMemoryState();
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(PHOTO_LIST_STATE_KEY);
       sessionStorage.removeItem(RESTORE_FLAG_KEY);
@@ -225,6 +265,7 @@ export const usePhotos = () => {
     const snapshot = persistedStateRef.current;
 
     if (snapshot) {
+      writeMemoryState(snapshot);
       if (snapshot.hasMore !== false && snapshot.photos.length > 0) {
         prefetchPage(snapshot.currentPage + 1, 20);
       }
@@ -276,6 +317,8 @@ export const usePhotos = () => {
       hasMore,
       timestamp: Date.now(),
     };
+
+    writeMemoryState(stateToPersist);
 
     sessionStorage.setItem(
       PHOTO_LIST_STATE_KEY,
