@@ -9,7 +9,7 @@ class PhotoService {
   /**
    * Get list photos with pagination
    * @param page - Page number (1-based)
-   * @param limit - Number of photos per page (default: 30)
+   * @param limit - Number of photos per page (default: 20)
    * @returns Promise with photo data and pagination info
    */
 
