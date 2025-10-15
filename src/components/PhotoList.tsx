@@ -141,6 +141,17 @@ const InfiniteScrollTrigger = ({
   loading: boolean;
 }) => {
   const triggerRef = useRef<HTMLDivElement>(null);
+  const pendingLoadRef = useRef(false);
+  const latestHasMoreRef = useRef(hasMore);
+  const latestLoadingRef = useRef(loading);
+
+  useEffect(() => {
+    latestHasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  useEffect(() => {
+    latestLoadingRef.current = loading;
+  }, [loading]);
 
   useEffect(() => {
     const trigger = triggerRef.current;
@@ -149,8 +160,20 @@ const InfiniteScrollTrigger = ({
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (entry.isIntersecting && hasMore && !loading) {
-          onLoadMore();
+        if (!entry) return;
+
+        if (entry.isIntersecting) {
+          pendingLoadRef.current = true;
+
+          if (
+            latestHasMoreRef.current &&
+            !latestLoadingRef.current
+          ) {
+            pendingLoadRef.current = false;
+            onLoadMore();
+          }
+        } else {
+          pendingLoadRef.current = false;
         }
       },
       {
@@ -161,7 +184,14 @@ const InfiniteScrollTrigger = ({
 
     observer.observe(trigger);
     return () => observer.disconnect();
-  }, [onLoadMore, hasMore, loading]);
+  }, [onLoadMore]);
+
+  useEffect(() => {
+    if (!loading && hasMore && pendingLoadRef.current) {
+      pendingLoadRef.current = false;
+      onLoadMore();
+    }
+  }, [hasMore, loading, onLoadMore]);
 
   return <div ref={triggerRef} className="h-4" />;
 };
