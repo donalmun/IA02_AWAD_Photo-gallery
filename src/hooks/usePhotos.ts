@@ -16,13 +16,13 @@ export const usePhotos = () => {
 
   // ---LOGIC---
   const loadPhotos = useCallback(
-    async (page: number) => {
+    async (page: number, limit: number = 20) => {
       if (loadingState === LoadingState.LOADING) return;
       setLoadingState(LoadingState.LOADING);
       setError(null);
 
       try {
-        const newPhotos = await photoService.getPhotos(page);
+        const newPhotos = await photoService.getPhotos(page, limit);
         if (newPhotos.length === 0) {
           setHasMore(false);
         } else {
@@ -44,7 +44,7 @@ export const usePhotos = () => {
 
   const loadMore = useCallback(() => {
     if (hasMore && loadingState !== LoadingState.LOADING) {
-      loadPhotos(currentPage + 1);
+      loadPhotos(currentPage + 1, 20); // Load 20 ảnh mỗi lần
     }
   }, [hasMore, loadingState, currentPage, loadPhotos]);
 
@@ -52,13 +52,21 @@ export const usePhotos = () => {
     setPhotos([]);
     setCurrentPage(1);
     setHasMore(true);
-    loadPhotos(1);
+    loadPhotos(1, 20);
   }, [loadPhotos]);
 
   // ---EFFECTS---
   useEffect(() => {
-    loadPhotos(1);
+    loadPhotos(1, 20);
   }, []);
 
-  return { photos, loadingState, error, hasMore, loadMore, refresh };
+  return {
+    photos,
+    loadingState,
+    error,
+    hasMore,
+    loadMore,
+    refresh,
+    currentPage,
+  };
 };
